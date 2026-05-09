@@ -1,0 +1,19 @@
+# tr8-bridge — auto-start the bridge daemon when a Roland TR-8 (or other
+# matching unit) is connected over USB.
+#
+# When a rawmidi node belonging to the matched device appears, this rule
+# tags it for systemd and pulls in the templated tr8-bridge@<kernel>.service.
+# The service stops automatically when the device is disconnected (via the
+# BindsTo= line in the systemd unit).
+#
+# Roland's USB vendor ID is 0582. The original TR-8 reports product ID
+# 017c (verified via `lsusb` against an actual unit).
+#
+# To support other Roland gear (TR-8S, TR-6S, etc.), duplicate the rule with
+# the matching ATTRS{idProduct} value. Find yours with:
+#
+#     lsusb | grep -i roland
+
+ACTION=="add", SUBSYSTEM=="sound", KERNEL=="midiC*D*", \
+    ATTRS{idVendor}=="0582", ATTRS{idProduct}=="017c", \
+    TAG+="systemd", ENV{SYSTEMD_WANTS}+="tr8-bridge@%k.service"
