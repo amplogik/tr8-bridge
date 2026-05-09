@@ -50,14 +50,23 @@ The cause is USB-MIDI 1.0 transport flow control:
 
 ## The fix
 
-`tr8-bridge` opens the TR-8's rawmidi node exclusively, drains it
-continuously, and re-publishes the bidirectional stream as a normal ALSA
-sequencer port (`tr8-bridge: TR-8 (bridged)`). PipeWire and JACK pick this
-up as a regular MIDI device, so DAWs subscribe to the bridged port instead
-of fighting over the rawmidi node.
+`tr8-bridge` opens every substream of the TR-8's rawmidi node exclusively,
+drains them continuously, and re-publishes each as a normal ALSA sequencer
+port. The TR-8 exposes two MIDI ports, so you'll see two seq ports under a
+single `tr8-bridge` client:
 
-The TR-8's sequencer reverts to running off its own quartz, and clock is
-solid again.
+```
+tr8-bridge: TR-8 MIDI 1 (bridged)
+tr8-bridge: TR-8 MIDI 2 (bridged)
+```
+
+PipeWire and JACK pick these up as regular MIDI devices, so DAWs subscribe
+to the bridged ports instead of fighting over the rawmidi node. The TR-8's
+sequencer reverts to running off its own quartz, and clock is solid again.
+
+Port names are derived automatically from the kernel rawmidi subdevice
+info, so the daemon Just Works for other multi-port USB-MIDI gear with the
+same back-pressure quirk.
 
 ## Caveats
 
@@ -84,13 +93,14 @@ sudo systemctl daemon-reload
 Re-plug the TR-8. The daemon should start automatically. Verify:
 
 ```sh
-aconnect -l | grep -A1 tr8-bridge
+aconnect -l | grep -A2 tr8-bridge
 systemctl status 'tr8-bridge@*'
 journalctl -u 'tr8-bridge@*' -f
 ```
 
-You should see a port called `tr8-bridge: TR-8 (bridged)`. Connect your DAW
-to that port instead of the raw `TR-8` port.
+You should see one or more ports under the `tr8-bridge` client (one per
+MIDI substream the device exposes). Connect your DAW to those instead of
+the raw `TR-8` ports.
 
 ## Verifying or extending the device match
 
@@ -113,10 +123,21 @@ cat /proc/asound/cards
 ./tr8-bridge -d midiC1D0
 ```
 
-The `-d` flag accepts `hw:X[,Y]`, `midiCXDY`, or `/dev/snd/midiCXDY`.
+The `-d` flag accepts:
+
+* `hw:X,Y` or `midiCXDY` or `/dev/snd/midiCXDY` — bridge **all** substreams
+  of card X, device Y (the typical case)
+* `hw:X,Y,Z` — bridge only substream Z (rare; mostly for debugging)
 
 If you see timing improve while the daemon is running and revert when it
 stops, you've reproduced the fix.
+
+Useful while debugging:
+
+```sh
+# Per-substream owner / overruns / drained byte counters
+cat /proc/asound/card<N>/midi0
+```
 
 ## How was this discovered?
 
